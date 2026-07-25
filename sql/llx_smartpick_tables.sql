@@ -35,3 +35,15 @@ CREATE TABLE IF NOT EXISTS llx_smartpick_shipments (
     date_creation DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_smartpick_shipments_fk_commande (fk_commande)
 ) ENGINE=innodb;
+
+CREATE TABLE IF NOT EXISTS llx_smartpick_user_logs (
+    rowid INTEGER PRIMARY KEY AUTO_INCREMENT,
+    fk_user INTEGER NOT NULL,
+    fk_product INTEGER NOT NULL,
+    qty_picked DOUBLE(24,8) NOT NULL DEFAULT 1.0,
+    weight_lifted_kg DOUBLE(24,8) NOT NULL DEFAULT 0.0,
+    duration_sec INTEGER DEFAULT 0,
+    date_creation DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_smartpick_user_logs_user (fk_user),
+    INDEX idx_smartpick_user_logs_date (date_creation)
+) ENGINE=innodb;
