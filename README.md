@@ -1,31 +1,26 @@
-# SmartPick - Dolibarr WMS, Dynamisk Faktor-Motor & Mistral AI Integration
+# SmartPick - Dolibarr WMS, SLA Ordrealder-Prioritering, AI & Shipmondo
 
-SmartPick er et WMS (Warehouse Management System) modul til Dolibarr ERP/CRM. Modulet anvender en **Dynamisk Faktor-Motor**, som trækker landekoder, nationale helligdage (`llx_c_holiday`) og Dolibarrs kalendervent (`llx_actioncomm`) for at forudse ordremængder 4 dage frem i tiden.
+SmartPick er et WMS (Warehouse Management System) modul til Dolibarr ERP/CRM med indbygget **SLA Ordrealder-Prioritering (FIFO / Order Escalation)**, dynamisk faktor-motor, AI-forudsigelse 4 dage frem og Shipmondo API v3.
 
 ---
 
-## 🏛 Dynamisk Dolibarr Faktor-Motor (`SmartPickFactorEngine.class.php`)
+## 🔥 SLA Ordrealder-Prioritering (`SmartPickQueue.class.php`)
 
-For at sikre at ingen kritiske faktorer overses, ekstraherer faktor-motoren følgende kontekstuelle data for måldatoen ($D+4$):
+For at undgå at ældre ordrer eller restordrer bliver glemt på lageret, anvender SmartPick en streng **Ordrealder Escalering (FIFO)**:
 
-1. **Landeafhængige Nationale Helligdage (`llx_c_holiday`):**
-   - Slår automatisk op på lagerets landekode (f.eks. `DK`, `SE`, `DE`, `NO`).
-   - Tjekker om måldatoen er en lukket helligdag (f.eks. Påske, Kristi Himmelfart, Jul).
-   - Tjekker om dagen LIGE FØR var en helligdag $\rightarrow$ Udløser **ophobningseffekt (Surge Factor)**, da e-handelsordrer har samlet sig op over lukkedagen.
-
-2. **Dolibarr Kalender-Events & Kampagner (`llx_actioncomm`):**
-   - Henter planlagte salgskampagner, Black Friday-events og virksomhedslukninger direkte fra Dolibarrs kalender.
-
-3. **Realtids Backlog i Dolibarr (`llx_commande`):**
-   - Inddrager ubehandlede/validerede ordrer i Dolibarr, som endnu ikke er plukket.
-
-4. **Tids- & Lønningsfaktorer:**
-   - Lønningsdagseffekt (1.–5. i måneden vs. 25.–31. i måneden).
-   - Ugedagsmønstre.
+1. **Aldersevaluering (Dwell Time):**
+   - Systemet beregner løbende hvor mange dage og timer en ordre har ligget ubehandlet i Dolibarr (`DATEDIFF(NOW(), order_date)`).
+2. **Eskaleret Prioritetsscore:**
+   - **0 dage gammel:** Normal prioritet.
+   - **1 dag gammel:** Eskaleret prioritet (+100 prioritetspoint).
+   - **2+ dage gammel:** 🔥 **KRITISK HØJ PRIORITET / SLA ADVARSEL**.
+3. **Sortering i Plukruten:**
+   Plukkøen sorterer automatisk således, at **de ældste ordrer altid plukkes først**, hvorefter ruten optimeres efter hyldeplacering (Rack/Bin).
 
 ---
 
 ## 🛠 Modulstruktur
+- `class/SmartPickQueue.class.php` - Plukkø med SLA Ordrealder-Prioritering (Gamle ordrer først)
 - `class/SmartPickFactorEngine.class.php` - Dolibarr Helligdags-, Kalender- & Landekode Faktor-Motor
 - `script/smartpick_auto_shifts_cron.php` - Natlig Dolibarr Cron til automatisk 4-dages vagtoprettelse
 - `class/SmartPickForecastAI.class.php` - Mistral AI ordre- & vagtprognoser med faktor-motor
