@@ -1,8 +1,9 @@
 <?php
 /**
- * SmartPickShiftPlanner - Vagtplanlægning, pluk-cutoff og arbejdstidsstyring
+ * SmartPickShiftPlanner - Automatisk AI-generering af vagter 4 dage forud
  */
 require_once DOL_DOCUMENT_ROOT . '/user/class/user.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/smartpick/class/SmartPickForecastAI.class.php';
 
 class SmartPickShiftPlanner
 {
@@ -14,77 +15,81 @@ class SmartPickShiftPlanner
     }
 
     /**
-     * Opret en vagt i systemet
-     *
-     * @param string $shift_date Dato (YYYY-MM-DD)
-     * @param string $start_time Starttid (HH:MM)
-     * @param string $end_time Sluttid (HH:MM)
-     * @param int $max_pickers Maksimalt antal plukkere på denne vagt
-     * @param string $cutoff_time Cutoff tidspunkt for same-day shipping (f.eks. '13:30')
+     * Kør den automatiske 4-dages rullende AI-vagtoprettelse
+     * Bliver kørt automatisk af Dolibarr Cron hver nat
      */
-    public function createShift($shift_date, $start_time, $end_time, $max_pickers = 5, $cutoff_time = '13:30')
+    public function runAutoGenerateShiftsForDayPlus4($apiKey)
     {
-        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartpick_shifts ";
-        $sql .= "(shift_date, start_time, end_time, max_pickers, cutoff_time, date_creation) VALUES (";
-        $sql .= "'" . $this->db->escape($shift_date) . "', ";
-        $sql .= "'" . $this->db->escape($start_time) . "', ";
-        $sql .= "'" . $this->db->escape($end_time) . "', ";
-        $sql .= intval($max_pickers) . ", ";
-        $sql .= "'" . $this->db->escape($cutoff_time) . "', ";
-        $sql .= "'" . $this->db->idate(time()) . "'";
-        $sql .= ")";
+        // 1. Beregn datoen 4 dage forud
+        $target_date = date('Y-m-d', strtotime('+4 days'));
 
-        return $this->db->query($sql);
-    }
-
-    /**
-     * En Dolibarr medarbejder vælger/tilmelder sig en vagt
-     */
-    public function assignWorkerToShift($fk_shift, $fk_user)
-    {
-        $dol_user = new User($this->db);
-        if ($dol_user->fetch($fk_user) <= 0) return false;
-
-        $sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartpick_user_shifts (fk_shift, fk_user, status) VALUES (";
-        $sql .= intval($fk_shift) . ", ";
-        $sql .= intval($fk_user) . ", ";
-        $sql .= "'confirmed'";
-        $sql .= ")";
-
-        return $this->db->query($sql);
-    }
-
-    /**
-     * Hent dagens arbejds- og pluk-cutoff status
-     */
-    public function getDailyCutoffStatus($date = null)
-    {
-        if (empty($date)) $date = date('Y-m-d');
-
-        $sql = "SELECT * FROM " . MAIN_DB_PREFIX . "smartpick_shifts WHERE shift_date = '" . $this->db->escape($date) . "'";
-        $res = $this->db->query($sql);
-
-        if ($res && $obj = $this->db->fetch_object($res)) {
-            $now = date('H:i');
-            $cutoff = $obj->cutoff_time;
-            $is_before_cutoff = ($now <= $cutoff);
-
-            return [
-                'shift_date' => $obj->shift_date,
-                'start_time' => $obj->start_time,
-                'end_time' => $obj->end_time,
-                'cutoff_time' => $cutoff,
-                'is_before_cutoff' => $is_before_cutoff,
-                'status_message' => $is_before_cutoff 
-                    ? "🟢 Pluk i gang for Same-Day Afhentning (Cutoff kl. $cutoff)" 
-                    : "🔴 Cutoff passeret. Nye ordrer skubbes til næste dags afhentning."
-            ];
+        // 2. Tjek om der allerede er oprettet vagter for denne dato
+        $check_sql = "SELECT rowid FROM " . MAIN_DB_PREFIX . "smartpick_shifts WHERE shift_date = '" . $this->db->escape($target_date) . "'";
+        $res = $this->db->query($check_sql);
+        if ($res && $this->db->num_rows($res) > 0) {
+            return ['status' => 'already_exists', 'target_date' => $target_date, 'message' => "Vagter for $target_date er allerede oprettet."];
         }
 
+        // 3. Kør AI-analyse baseret på empiriske salgsmønstre
+        $forecast = new SmartPickForecastAI($this->db);
+        $result = $forecast->generateAutoShiftsForTargetDate($apiKey, $target_date);
+
+        $required_pickers = $result['required_pickers'];
+        $predicted_orders = $result['predicted_orders'];
+
+        // 4. Opret automatisk den AI-beregnede vagt i llx_smartpick_shifts
+        $insert_sql = "INSERT INTO " . MAIN_DB_PREFIX . "smartpick_shifts ";
+        $insert_sql .= "(shift_date, start_time, end_time, max_pickers, cutoff_time, date_creation) VALUES (";
+        $insert_sql .= "'" . $this->db->escape($target_date) . "', ";
+        $insert_sql .= "'07:00', '15:00', "; // Standard dagshold
+        $insert_sql .= intval($required_pickers) . ", ";
+        $insert_sql .= "'13:30', ";
+        $insert_sql .= "'" . $this->db->idate(time()) . "'";
+        $insert_sql .= ")";
+
+        $this->db->query($insert_sql);
+        $shift_id = $this->db->last_insert_id(MAIN_DB_PREFIX . "smartpick_shifts");
+
         return [
-            'cutoff_time' => '13:30',
-            'is_before_cutoff' => (date('H:i') <= '13:30'),
-            'status_message' => 'Standard cutoff 13:30 gælder.'
+            'status' => 'created',
+            'shift_id' => $shift_id,
+            'target_date' => $target_date,
+            'predicted_orders' => $predicted_orders,
+            'auto_created_pickers_needed' => $required_pickers,
+            'message' => "🟢 AI har automatisk oprettet vagt for $target_date med plads til $required_pickers plukkere (forventet $predicted_orders ordrer)."
         ];
+    }
+
+    /**
+     * Hent åbne AI-oprettede vagter som medarbejdere kan vælge 4 dage forud
+     */
+    public function getOpenAutoGeneratedShifts()
+    {
+        $today = date('Y-m-d');
+        $sql = "SELECT s.*, COUNT(us.rowid) as claimed_pickers ";
+        $sql .= "FROM " . MAIN_DB_PREFIX . "smartpick_shifts s ";
+        $sql .= "LEFT JOIN " . MAIN_DB_PREFIX . "smartpick_user_shifts us ON us.fk_shift = s.rowid ";
+        $sql .= "WHERE s.shift_date >= '" . $this->db->escape($today) . "' ";
+        $sql .= "GROUP BY s.rowid ";
+        $sql .= "ORDER BY s.shift_date ASC";
+
+        $resql = $this->db->query($sql);
+        $shifts = [];
+        if ($resql) {
+            while ($obj = $this->db->fetch_object($resql)) {
+                $shifts[] = [
+                    'shift_id' => $obj->rowid,
+                    'shift_date' => $obj->shift_date,
+                    'start_time' => $obj->start_time,
+                    'end_time' => $obj->end_time,
+                    'max_pickers' => intval($obj->max_pickers),
+                    'claimed_pickers' => intval($obj->claimed_pickers),
+                    'available_spots' => intval($obj->max_pickers) - intval($obj->claimed_pickers),
+                    'cutoff_time' => $obj->cutoff_time
+                ];
+            }
+        }
+
+        return $shifts;
     }
 }
