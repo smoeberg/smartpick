@@ -1,27 +1,31 @@
-# SmartPick - Dolibarr WMS, DeepSeek-R1 AI, Cartonization & Shipmondo
+# SmartPick - Dolibarr WMS, Restordre-Håndtering, Post-Pick Cartonization & DeepSeek-R1
 
-SmartPick er et WMS (Warehouse Management System) modul til Dolibarr ERP/CRM med indbygget **DeepSeek-R1 Ræsonneringsmodel**, automatisk 4-dages AI-vagtmotor, emballageberegning (Cartonization), Put-Wall konsolidering og Shipmondo API v3.
+SmartPick er et WMS (Warehouse Management System) modul til Dolibarr ERP/CRM med indbygget **Håndtering af Defekte Varer & Restordrer**, **Dynamisk Post-Pick Emballageberegning**, DeepSeek-R1 AI ræsonnering, Put-Wall konsolidering og Shipmondo API v3.
 
 ---
 
-## 🧠 DeepSeek-R1 Integration (`class/SmartPickDeepSeekAI.class.php`)
+## ⚠️ Defekt Vare på Lagerhylde & Restordre-Opsplitning (`SmartPickQueue.class.php`)
+- **Situation:** En plukker ankommer til lagerplaceringen, men den sidste vare på hylden er defekt, beskadiget eller mangler.
+- **Plukker-Aktion:** Plukkeren trykker *"⚠️ Defekt / Mangler"* på sin håndterminal.
+- **Automatisk Konsekvens:**
+  1. Den defekte vare nedskrives og fjernes automatisk fra salgslageret i Dolibarr (`MouvementStock`).
+  2. Ordren opsplittes automatisk: De færdigplukkede varer sendes videre til pakning, mens den manglende vare placeres på **Restordre (Backorder)**.
+  3. Kundeservice/Salg i Dolibarr adviseres øjeblikkeligt om restordren.
 
-DeepSeek-R1 er valgt som den primære AI-ræsonneringsmotor til WMS-logikken pga. sine **overlegne evner inden for kæde-af-tankegang (Chain-of-Thought reasoning)**, rumlig lageroptimering (Slotting/Bin-Packing) og komplekse tidsserie-prognoser.
+---
 
-### **Fleksible Afviklingsmuligheder:**
-1. **Cloud API (DeepSeek API / Groq / Together.ai):** Høj hastighed og fuld skalerbarhed.
-2. **Lokal Afvikling (Ollama / vLLM / Local Server):** Kør DeepSeek-R1 lokalt i eget miljø uden eksterne API-kald for maksimal datasikkerhed.
-
-Konfigureres enkelt under `admin/admin_setup.php`.
+## 📦 Dynamisk Post-Pick Emballageberegning (`SmartPickCartonization.class.php`)
+- **Hvorfor Post-Pick?** For store varer eller ordrer med delvise pluk (f.eks. pga. defekt vare) beregnes den optimale papkasse **FØRST NÅR PLUKNINGEN ER GENNEMFØRT**.
+- Systemet beregner den præcise volumen af de varer, der *reelt* blev lagt i plukkassen, så pakkeren ved pakkebordet altid får den helt rigtige kasseanbefaling.
 
 ---
 
 ## 🛠 Modulstruktur
-- `class/SmartPickDeepSeekAI.class.php` - DeepSeek-R1 AI ræsonneringsklient (Lokal vLLM/Ollama eller Cloud API)
-- `class/SmartPickCartonization.class.php` - Automatisk beregning af optimal Dolibarr papkasse
+- `class/SmartPickQueue.class.php` - Plukkø med Defekt/Mangler håndtering & Restordre-opsplitning
+- `class/SmartPickCartonization.class.php` - Dynamisk Emballage-Beregning EFTER Pluk
+- `class/SmartPickDeepSeekAI.class.php` - DeepSeek-R1 AI ræsonneringsklient (Lokal Ollama/vLLM eller Cloud API)
 - `class/SmartPickAllocation.class.php` - Put-Wall Slot Konsolidering, Pakker-ID & Pakketid
 - `class/SmartPickFactorEngine.class.php` - Vækstfaktor (Shopskalering) & Højtidsforskydningsanalyse
-- `class/SmartPickQueue.class.php` - Plukkø med SLA Ordrealder-Prioritering (Gamle ordrer først)
 - `script/smartpick_auto_shifts_cron.php` - Natlig Dolibarr Cron til automatisk 4-dages vagtoprettelse
 - `class/SmartPickForecastAI.class.php` - AI ordre- & vagtprognoser med faktor-motor
 - `class/SmartPickShiftPlanner.class.php` - Automatisk vagtoprettelse & medarbejdertilmelding
