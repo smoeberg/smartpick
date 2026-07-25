@@ -5,8 +5,11 @@ if (!defined('NOCSRFCHECK')) define('NOCSRFCHECK', '1');
 if (!defined('NOTOKENRENEWAL')) define('NOTOKENRENEWAL', '1');
 
 require_once '../../main.inc.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartpick/class/SmartPickQueue.class.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartpick/class/ShipmondoAPI.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/smartpick/domain/picking/SmartPickQueue.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/smartpick/domain/shipping/ShipmondoAPI.class.php';
+
+use SmartPick\Domain\Picking\SmartPickQueue;
+use SmartPick\Domain\Shipping\ShipmondoAPI;
 
 header('Content-Type: application/json; charset=utf-8');
 

@@ -1,0 +1,24 @@
+{
+    "name": "signalement/smartpick",
+    "description": "SmartPick - Warehouse Execution Platform module til Dolibarr ERP/CRM",
+    "type": "dolibarr-module",
+    "license": "GPL-3.0-or-later",
+    "autoload": {
+        "classmap": [
+            "domain/",
+            "application/",
+            "infrastructure/",
+            "events/",
+            "rules/",
+            "interfaces/",
+            "legacy/"
+        ]
+    },
+    "require": {
+        "php": ">=7.4"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "classmap-authoritative": false
+    }
+}

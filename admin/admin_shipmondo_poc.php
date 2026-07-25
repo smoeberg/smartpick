@@ -13,7 +13,9 @@ if (! $main_path || ! file_exists($main_path)) {
 require_once $main_path;
 
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
-require_once DOL_DOCUMENT_ROOT.'/custom/smartpick/class/ShipmondoPOC.class.php';
+require_once DOL_DOCUMENT_ROOT.'/custom/smartpick/domain/shipping/ShipmondoPOC.class.php';
+
+use SmartPick\Domain\Shipping\ShipmondoPOC;
 
 // Sprog og sideopsætning
 $langs->load("admin");

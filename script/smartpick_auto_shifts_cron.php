@@ -8,7 +8,9 @@
 if (!defined('NOSESSION')) define('NOSESSION', '1');
 
 require_once __DIR__ . '/../../main.inc.php';
-require_once DOL_DOCUMENT_ROOT . '/custom/smartpick/class/SmartPickShiftPlanner.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/smartpick/domain/labor/SmartPickShiftPlanner.class.php';
+
+use SmartPick\Domain\Labor\SmartPickShiftPlanner;
 
 $apiKey = $conf->global->SMARTPICK_MISTRAL_API_KEY;
 
