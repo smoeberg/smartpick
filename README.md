@@ -4,37 +4,30 @@ SmartPick er et avanceret WMS (Warehouse Management System) modul til Dolibarr E
 
 ---
 
-## 🏗 WMS Workflow & Dolibarr Standardintegration
+## 📦 Plukkerkasser (Picker Totes) til Pakkebord Workflow
 
-### 1. AI-baseret Lagerorganisering (Slotting & ABC-analyse) (`SmartPickAI.class.php`)
-- **Frekvensanalyse:** Beregner løbende hvilke produkter der plukkes hyppigst på tværs af tidligere ordrer i Dolibarr.
-- **Placering tæt på udgang:** A-varer (top 20% hurtigst sælgende) tildeles automatiske placeringsanbefalinger i Zone A (tættest på pakke-/udgangsområdet), B-varer i midtersektionen og C-varer på fjernlageret for at minimere gangtid.
+### Hvordan det fungerer fra Pluk til Pakning:
 
-### 2. Genopfyldning af Pluklager fra Færdiglager (`SmartPickReplenishment.class.php`)
-- **Standard Dolibarr Tærskler:** Benytter `seuil_stock` (minimumsbeholdning) og `desiredstock` på Dolibarrs `product_warehouse` tabeller.
-- **Automatisk Genopfyldningsordre:** Når beholdningen på pluklageret falder under minimumsgrænsen, genereres automatisk en genopfyldningsopgave fra bufferlageret/fjernlageret.
-- **Dolibarr MouvementStock:** Overførslen bogføres direkte som en standard internt lagertransfer i Dolibarr (`MouvementStock`).
+1. **Plukfasen (Plukker har en unik kasse):**
+   - Hver plukker tildeles en fysisk identificerbar kasse eller vognplads (f.eks. `KASSE-RØD-01`, `KASSE-BLÅ-05`, `VOGN1-A`).
+   - Når plukkeren scanner varen på hylden, scanner han derefter stregkoden på sin plukkerkasse.
+   - Systemet kobler den specifikke ordrelinje til kassen `KASSE-RØD-01`.
 
-### 3. Medarbejder-Allokering, Zone-pluk & Samlestation (`SmartPickAllocation.class.php`)
-- **Tildeling:** En ordre kan enten plukkes samlet af én medarbejder (Single Order Picking) eller opdeles efter zoner (`loc_rack`), så flere medarbejdere plukker hver deres del i parallel.
-- **Samlestation (Consolidation Point):** Ved zone-pluk samles del-plukkene ved pakke-/samlestationen, hvor systemet verificerer at alle linjer er ankommet før udskrift af Shipmondo fragtlabel.
-
-### 4. Registrering af Medarbejderdata & Arbejdsforhold (`SmartPickStats.class.php`)
-- **Ergometri & Løftekilo:** For hvert udført pluk beregnes den samlede løftede vægt i kg baseret på produktets vægt i Dolibarr (`product->weight`).
-- **Logning:** Gemmer løftet kg, plukhastighed (sekunder pr. linje) og antal gennemførte pluk pr. medarbejder i `llx_smartpick_user_logs` til brug for arbejdsmiljø- og kapacitetsrapportering.
-
-### 5. Løbende Lagertælling under Pluk (Cycle Counting) (`SmartPickCycleCount.class.php`)
-- **Dynamiske Stikprøver:** Når en medarbejder befinder sig ved en plukplacering, beder systemet med jævne mellemrum (f.eks. ved 1 ud af 10 pluk) medarbejderen bekræfte eller korrigere hyldens faktiske beholdning.
-- **Automatisk Justering:** Hvis der opdages en afvigelse, opretter systemet automatisk en standard Dolibarr lagerjustering i `MouvementStock` med årsagsangivelse.
+2. **Pakkebordet (Pakkerens skærmvisning):**
+   - Når alle kasser til en ordre ankommer til pakkebordet, scanner pakkeren ordrenummeret.
+   - Pakkeskærmen viser en **strikte plukinstruks for pakkeren**:
+     - 📦 **Vare 1 (Toppakning):** Tag **2 stki** fra **`KASSE-BLÅ-05`** (Plukker A).
+     - 📦 **Vare 2 (Cabel/Tilbehør):** Tag **1 stki** fra **`KASSE-RØD-01`** (Plukker B).
+   - Pakkeren scanner kassen, tager varen, lægger den i forsendelseskassen og bekræfter.
+   - Når alt er hentet fra de respektive plukkerkasser og bekræftet, udskrives Shipmondo fragtlabelen automatisk.
 
 ---
 
 ## 🛠 Modulstruktur
+- `class/SmartPickAllocation.class.php` - Plukkerkasser (Picker Totes) & Pakkebordsinstruktioner
 - `class/SmartPickAI.class.php` - AI & ABC Slotting logik
 - `class/SmartPickReplenishment.class.php` - Genopfyldning fra overskudslager
-- `class/SmartPickAllocation.class.php` - Allokering & Samlestation
 - `class/SmartPickStats.class.php` - Løftede kilo & arbejdsforhold
 - `class/SmartPickCycleCount.class.php` - Løbende lagertælling
 - `class/ShipmondoAPI.class.php` - Shipmondo REST API v3
-- `templates/smartpick_dashboard.tpl.php` - Mobil UI til pluk
-- `sql/llx_smartpick_tables.sql` - Databasestruktur
+- `templates/smartpick_dashboard.tpl.php` - Mobil UI til pluk & pak

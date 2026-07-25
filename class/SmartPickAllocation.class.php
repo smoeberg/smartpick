@@ -1,6 +1,6 @@
 <?php
 /**
- * SmartPickAllocation - Handling for hvor og hvordan ordrer samles (Consolidation & Put-Wall / Tote Tracking)
+ * SmartPickAllocation - Kobling mellem Plukkerkasse (Picker Tote) og Pakkebord (Packing Station)
  */
 class SmartPickAllocation
 {
@@ -12,62 +12,60 @@ class SmartPickAllocation
     }
 
     /**
-     * Tildel en specifik samlekasse / Put-wall hylde (Tote) til en ordre ved samlestationen
+     * Registrer at et specifikt produkt på en ordre er plukket ned i plukkerens unikke kasse
      *
-     * @param int $fk_commande Ordre ID i Dolibarr
-     * @param string $tote_id Samlekassens ID (f.eks. 'TOTE-42' eller 'HYLDE-B3')
+     * @param int $queue_id ID på pluklinjen
+     * @param string $picker_tote_id Plukkerens kasse ID (f.eks. 'KASSE-RØD-01' eller 'CART1-A')
      */
-    public function assignOrderToTote($fk_commande, $tote_id)
+    public function recordPickerTote($queue_id, $picker_tote_id)
     {
         $sql = "UPDATE " . MAIN_DB_PREFIX . "smartpick_queue SET ";
-        $sql .= "tote_id = '" . $this->db->escape($tote_id) . "' ";
-        $sql .= "WHERE fk_commande = " . intval($fk_commande);
+        $sql .= "tote_id = '" . $this->db->escape($picker_tote_id) . "', ";
+        $sql .= "status = 'picked' ";
+        $sql .= "WHERE rowid = " . intval($queue_id);
 
         return $this->db->query($sql);
     }
 
     /**
-     * Tjek realtid samlestatus for en ordre på pakkeskærmen
+     * Hent pakkebordsvisning for en ordre: Vis præcis hvilke kasser pakkeren skal tage de enkelte produkter fra
+     *
+     * @param int $fk_commande Ordre ID
      */
-    public function getConsolidationStatus($fk_commande)
+    public function getPackingInstructionsForOrder($fk_commande)
     {
-        $sql = "SELECT q.*, c.ref as order_ref ";
+        $sql = "SELECT q.*, p.label as product_name, p.ref as product_ref, p.barcode ";
         $sql .= "FROM " . MAIN_DB_PREFIX . "smartpick_queue q ";
-        $sql .= "JOIN " . MAIN_DB_PREFIX . "commande c ON c.rowid = q.fk_commande ";
+        $sql .= "JOIN " . MAIN_DB_PREFIX . "product p ON p.rowid = q.fk_product ";
         $sql .= "WHERE q.fk_commande = " . intval($fk_commande);
 
         $resql = $this->db->query($sql);
-        $total_lines = 0;
-        $picked_lines = 0;
-        $tote_id = '';
-        $zones_pending = [];
+        $items = [];
+        $totes_required = [];
 
         if ($resql) {
             while ($obj = $this->db->fetch_object($resql)) {
-                $total_lines++;
-                if (!empty($obj->tote_id)) $tote_id = $obj->tote_id;
-
-                if ($obj->status === 'picked') {
-                    $picked_lines++;
-                } else {
-                    $zone = !empty($obj->loc_rack) ? $obj->loc_rack : 'Generel Zone';
-                    if (!in_array($zone, $zones_pending)) {
-                        $zones_pending[] = $zone;
-                    }
+                $tote = !empty($obj->tote_id) ? $obj->tote_id : 'Ukendt plukkerkasse';
+                if (!in_array($tote, $totes_required)) {
+                    $totes_required[] = $tote;
                 }
+
+                $items[] = [
+                    'queue_id' => $obj->rowid,
+                    'product_ref' => $obj->product_ref,
+                    'product_name' => $obj->product_name,
+                    'barcode' => $obj->barcode,
+                    'qty_picked' => $obj->qty_picked,
+                    'picker_tote' => $tote,
+                    'instruction' => 'Tag ' . floatval($obj->qty_picked) . ' stki fra kasse: ' . $tote
+                ];
             }
         }
 
-        $is_complete = ($total_lines > 0 && $total_lines === $picked_lines);
-
         return [
             'fk_commande' => $fk_commande,
-            'tote_id' => $tote_id ? $tote_id : 'Ikke tildelt endnu',
-            'total_lines' => $total_lines,
-            'picked_lines' => $picked_lines,
-            'is_complete' => $is_complete,
-            'status_label' => $is_complete ? '🟢 KLAR TIL PAKNING & SHIPMONDO PRINT' : '🟡 DELVIST ANKOMMET - VENTER PÅ ZONE: ' . implode(', ', $zones_pending),
-            'zones_pending' => $zones_pending
+            'totes_to_collect_from' => $totes_required,
+            'items' => $items
         ];
     }
 }
