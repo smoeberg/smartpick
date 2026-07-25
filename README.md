@@ -1,28 +1,34 @@
-# SmartPick - Dolibarr WMS, AI Auto-Vagter, Mistral AI & Shipmondo Integration
+# SmartPick - Dolibarr WMS, Dynamisk Faktor-Motor & Mistral AI Integration
 
-SmartPick er et komplet WMS (Warehouse Management System) modul til Dolibarr ERP/CRM. Modulet anvender empiriske salgsmønstre og **Mistral AI** til automatisk at forudse ordremængder 4 dage frem i tiden og oprette de nødvendige plukkevagter helt uden manuel indgriben.
+SmartPick er et WMS (Warehouse Management System) modul til Dolibarr ERP/CRM. Modulet anvender en **Dynamisk Faktor-Motor**, som trækker landekoder, nationale helligdage (`llx_c_holiday`) og Dolibarrs kalendervent (`llx_actioncomm`) for at forudse ordremængder 4 dage frem i tiden.
 
 ---
 
-## 🔮 Automatisk AI-Vagtoprettelse 4 Dage Forud (`script/smartpick_auto_shifts_cron.php`)
+## 🏛 Dynamisk Dolibarr Faktor-Motor (`SmartPickFactorEngine.class.php`)
 
-I stedet for manuel vagtoprettelse kører SmartPick en **fuldautomatisk 4-dages rullende AI-motor**:
+For at sikre at ingen kritiske faktorer overses, ekstraherer faktor-motoren følgende kontekstuelle data for måldatoen ($D+4$):
 
-1. **Empirisk Dataudtræk fra Dolibarr (`SmartPickForecastAI.class.php`):**
-   - **Ugedagseffekt:** Hvilke ugedage har flest ordrer (f.eks. stor mandagsstigning efter weekenden).
-   - **Lønningsdagseffekt (Månedsstart vs. Månedsslut):** Analyserer empirien i Dolibarr. Eksempelvis vil en mandag den 1.-5. i måneden (efter lønudbetaling) have op til 35-50% HØJERE ordremængde end en mandag den 28. sidst på måneden.
-   - **Sæsonmønstre:** Tager højde for historiske kampagner og månedstrends.
+1. **Landeafhængige Nationale Helligdage (`llx_c_holiday`):**
+   - Slår automatisk op på lagerets landekode (f.eks. `DK`, `SE`, `DE`, `NO`).
+   - Tjekker om måldatoen er en lukket helligdag (f.eks. Påske, Kristi Himmelfart, Jul).
+   - Tjekker om dagen LIGE FØR var en helligdag $\rightarrow$ Udløser **ophobningseffekt (Surge Factor)**, da e-handelsordrer har samlet sig op over lukkedagen.
 
-2. **Automatisk Vagtoprettelse (`SmartPickShiftPlanner.class.php`):**
-   - Hver nat (via Cron) beregner Mistral AI det forventede ordreantal for **Dato + 4 Dage**.
-   - Systemet beregner præcis hvor mange plukkere der kræves og **opretter automatisk vagterne** i `llx_smartpick_shifts`.
-   - Plukkerne kan herefter 4 dage i forvejen se de åbne AI-oprettede vagter og vælge/tilmelde sig direkte på skærmen.
+2. **Dolibarr Kalender-Events & Kampagner (`llx_actioncomm`):**
+   - Henter planlagte salgskampagner, Black Friday-events og virksomhedslukninger direkte fra Dolibarrs kalender.
+
+3. **Realtids Backlog i Dolibarr (`llx_commande`):**
+   - Inddrager ubehandlede/validerede ordrer i Dolibarr, som endnu ikke er plukket.
+
+4. **Tids- & Lønningsfaktorer:**
+   - Lønningsdagseffekt (1.–5. i måneden vs. 25.–31. i måneden).
+   - Ugedagsmønstre.
 
 ---
 
 ## 🛠 Modulstruktur
+- `class/SmartPickFactorEngine.class.php` - Dolibarr Helligdags-, Kalender- & Landekode Faktor-Motor
 - `script/smartpick_auto_shifts_cron.php` - Natlig Dolibarr Cron til automatisk 4-dages vagtoprettelse
-- `class/SmartPickForecastAI.class.php` - Empirisk analyse (lønningsdagseffekt, ugedagstrend) & Mistral AI
+- `class/SmartPickForecastAI.class.php` - Mistral AI ordre- & vagtprognoser med faktor-motor
 - `class/SmartPickShiftPlanner.class.php` - Automatisk vagtoprettelse & medarbejdertilmelding
 - `class/SmartPickMistralAI.class.php` - Mistral AI REST API klient
 - `class/SmartPickAI.class.php` - AI-baseret slotting med Mistral AI

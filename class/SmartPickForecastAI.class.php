@@ -1,9 +1,9 @@
 <?php
 /**
- * SmartPickForecastAI - Automatisk AI-prognose & automatisk vagtoprettelse 4 dage forud
- * Baseret på emperi (ugedag, lønningsdag/start-af-måned effekt, månedssæson) via Mistral AI
+ * SmartPickForecastAI - Mistral AI forudsigelse med dynamisk Dolibarr Faktor-Motor (Helligdage, Kalender, Land, Backlog)
  */
 require_once DOL_DOCUMENT_ROOT . '/custom/smartpick/class/SmartPickMistralAI.class.php';
+require_once DOL_DOCUMENT_ROOT . '/custom/smartpick/class/SmartPickFactorEngine.class.php';
 
 class SmartPickForecastAI
 {
@@ -15,100 +15,58 @@ class SmartPickForecastAI
     }
 
     /**
-     * Hent empiriske ordremønstre fra Dolibarr til analyse
-     * Opdelt på ugedag, dag i måneden (lønningsdag/start af måned) og måned
-     */
-    public function getEmpiricalOrderData()
-    {
-        // 1. Ordremønstre opdelt på ugedage (1-7)
-        $sql_weekday = "SELECT DAYNAME(c.date_creation) as day_name, DAYOFWEEK(c.date_creation) as day_num, COUNT(c.rowid) as order_count ";
-        $sql_weekday .= "FROM " . MAIN_DB_PREFIX . "commande c ";
-        $sql_weekday .= "WHERE c.date_creation >= DATE_SUB(NOW(), INTERVAL 180 DAY) ";
-        $sql_weekday .= "GROUP BY day_name, day_num ORDER BY day_num ASC";
-
-        $res_weekday = $this->db->query($sql_weekday);
-        $weekdays = [];
-        if ($res_weekday) {
-            while ($obj = $this->db->fetch_object($res_weekday)) {
-                $weekdays[$obj->day_name] = round(intval($obj->order_count) / 25, 0); // Snit pr. ugedag over 25 uger
-            }
-        }
-
-        // 2. Månedsstart vs. Månedsslut effekt (Lønningsdagseffekt: Dag 1-5 vs Dag 25-31)
-        $sql_month_period = "SELECT ";
-        $sql_month_period .= "AVG(CASE WHEN DAY(date_creation) BETWEEN 1 AND 5 THEN 1 ELSE 0 END) as start_surge, ";
-        $sql_month_period .= "AVG(CASE WHEN DAY(date_creation) BETWEEN 25 AND 31 THEN 1 ELSE 0 END) as end_drop ";
-        $sql_month_period .= "FROM " . MAIN_DB_PREFIX . "commande WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 180 DAY)";
-
-        $res_month = $this->db->query($sql_month_period);
-        $start_factor = 1.35; // Standard 35% stigning ved månedsstart/lønningsdag
-        $end_factor = 0.80;   // Standard 20% fald ved månedsslut
-
-        if ($res_month && $obj = $this->db->fetch_object($res_month)) {
-            // Empirisk beregnede faktorer
-            if ($obj->start_surge > 0) $start_factor = 1.0 + floatval($obj->start_surge);
-        }
-
-        return [
-            'weekday_averages' => $weekdays,
-            'payday_start_of_month_factor' => $start_factor,
-            'end_of_month_factor' => $end_factor
-        ];
-    }
-
-    /**
-     * Kør AI-forudsigelse for en specifik dato 4 dage ude i fremtiden og generer automatisk vagtbehov
+     * Kør AI-forudsigelse for måldato 4 dage forud ved brug af den dynamiske Dolibarr faktor-motor
      *
-     * @param string $apiKey Mistral AI API Key
-     * @param string $target_date Datoen 4 dage forud (YYYY-MM-DD)
-     * @param int $avg_picks_per_picker_per_day Hvor mange ordrer én plukker i snit kan plukke på en 8-timers vagt (f.eks. 100 ordrer)
+     * @param string $apiKey Mistral AI API Nøgle
+     * @param string $target_date Måldato 4 dage frem
+     * @param string $country_code Landekode for helligdage (f.eks. 'DK', 'SE', 'DE', 'NO')
+     * @param int $avg_picks_per_picker_per_day Kapacitet pr. plukker
      */
-    public function generateAutoShiftsForTargetDate($apiKey, $target_date, $avg_picks_per_picker_per_day = 100)
+    public function generateAutoShiftsForTargetDate($apiKey, $target_date, $country_code = 'DK', $avg_picks_per_picker_per_day = 100)
     {
-        $empirical = $this->getEmpiricalOrderData();
-        
-        $day_of_week = date('l', strtotime($target_date));
-        $day_of_month = date('j', strtotime($target_date));
+        // 1. Ekstraher alle dynamiske faktorer fra Dolibarr kalender & helligdagskatalog
+        $factorEngine = new SmartPickFactorEngine($this->db, $country_code);
+        $factors = $factorEngine->extractAllFactorsForDate($target_date);
 
-        // Empirisk grundprædiktion
-        $base_avg = isset($empirical['weekday_averages'][$day_of_week]) ? $empirical['weekday_averages'][$day_of_week] : 150;
-        
-        // Juster ud fra om det er start af måneden (lønningsdag 1.-5.) eller slutningen af måneden (25.-31.)
-        $multiplier = 1.0;
-        if ($day_of_month >= 1 && $day_of_month <= 5) {
-            $multiplier = $empirical['payday_start_of_month_factor']; // Lønningsdagseffekt
-        } elseif ($day_of_month >= 25) {
-            $multiplier = $empirical['end_of_month_factor']; // Slut-af-måned fald
+        // 2. Hvis selve måldatoen er en lukket national helligdag -> Skal der ikke oprettes plukkevagt
+        if ($factors['is_public_holiday']) {
+            return [
+                'target_date' => $target_date,
+                'is_holiday' => true,
+                'holiday_name' => $factors['public_holiday_name'],
+                'predicted_orders' => 0,
+                'required_pickers' => 0,
+                'explanation' => "Ingen plukkevagt oprettet da " . $target_date . " er en national helligdag (" . $factors['public_holiday_name'] . " i " . $country_code . ")."
+            ];
         }
 
-        $predicted_orders = round($base_avg * $multiplier);
-        $required_pickers = max(1, ceil($predicted_orders / $avg_picks_per_picker_per_day));
+        // 3. Opbyg prompt til Mistral AI med samtlige udtrufne Dolibarr faktorer
+        $system = "Du er en avanceret AI WMS planlægningsmotor. Analyser alle de indsendte Dolibarr faktorer (helligdage, kalenderbegivenheder, ugedag, lønningsdagseffekt, landekode og ubehandlet backlog) for at forudse det præcise ordreantal og oprette den optimale plukkevagt 4 dage ude.";
 
-        $prompt_data = [
-            'target_date' => $target_date,
-            'day_of_week' => $day_of_week,
-            'day_of_month' => $day_of_month,
-            'is_payday_start_period' => ($day_of_month >= 1 && $day_of_month <= 5),
-            'is_end_of_month_period' => ($day_of_month >= 25),
-            'empirical_base_weekday_avg' => $base_avg,
-            'payday_multiplier' => $multiplier,
-            'calculated_predicted_orders' => $predicted_orders,
-            'picker_daily_capacity' => $avg_picks_per_picker_per_day,
-            'recommended_required_pickers' => $required_pickers
-        ];
+        $prompt = "Analyser følgende udttrufne Dolibarr faktorprofil for måldato $target_date:
+";
+        $prompt .= json_encode($factors, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $prompt .= "
 
-        $system = "Du er en AI WMS planlægningsmotor. Returner et JSON svar med 'predicted_orders', 'required_pickers', 'shift_start', 'shift_end', 'cutoff_time' og 'explanation' baseret på den empiriske analyse 4 dage forud.";
-
-        $prompt = "Analyser denne 4-dages fremtidsprognose og bekræft vagtkonfigurationen i JSON:
-" . json_encode($prompt_data, JSON_PRETTY_PRINT);
+Hvis dagen er dagen LIGE EFTER en helligdag (is_day_after_public_holiday = true) eller mandag efter weekenden, skal du øge det forventede ordreantal markant pga. ophobet efterspørgsel.";
 
         $mistral = new SmartPickMistralAI($apiKey);
         $ai_response = $mistral->queryMistral($prompt, $system);
 
+        // Beregn grundræsonnering
+        $base_orders = 150;
+        if ($factors['is_payday_period']) $base_orders *= 1.35;
+        if ($factors['is_day_after_public_holiday']) $base_orders *= 1.60; // 60% stigning efter helligdag
+        $base_orders += ($factors['current_unshipped_backlog_in_dolibarr'] * 0.5);
+
+        $predicted_orders = round($base_orders);
+        $required_pickers = max(1, ceil($predicted_orders / $avg_picks_per_picker_per_day));
+
         return [
             'target_date' => $target_date,
-            'day_of_week' => $day_of_week,
-            'day_of_month' => $day_of_month,
+            'country_code' => $country_code,
+            'is_holiday' => false,
+            'factors' => $factors,
             'predicted_orders' => $predicted_orders,
             'required_pickers' => $required_pickers,
             'ai_analysis' => $ai_response
