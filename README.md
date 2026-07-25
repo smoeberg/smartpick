@@ -1,27 +1,26 @@
-# SmartPick - Dolibarr WMS, SLA Ordrealder-Prioritering, AI & Shipmondo
+# SmartPick - Dolibarr WMS, Vækstfaktor, Højtidsforskydning & AI
 
-SmartPick er et WMS (Warehouse Management System) modul til Dolibarr ERP/CRM med indbygget **SLA Ordrealder-Prioritering (FIFO / Order Escalation)**, dynamisk faktor-motor, AI-forudsigelse 4 dage frem og Shipmondo API v3.
+SmartPick er et WMS (Warehouse Management System) modul til Dolibarr ERP/CRM med indbygget **Vækstfaktor (Shopskalering)**, **År-til-År Højtidsforskydning**, dynamisk faktor-motor, AI-forudsigelse 4 dage frem og Shipmondo API v3.
 
 ---
 
-## 🔥 SLA Ordrealder-Prioritering (`SmartPickQueue.class.php`)
+## 🚀 Vækstfaktor & Shop-Skalering (`SMARTPICK_GROWTH_FACTOR`)
+- **Automatisk YoY Vækstberegning:** Måler den reelle ordrevækst i Dolibarr over de seneste 30 dage sammenlignet med samme periode sidste år.
+- **Shop-Ekspansionsfaktor:** Hvis virksomheden f.eks. udvider fra 2 til 8 connectede e-handelsshops, kan vækstfaktoren indstilles til `4.0` i administrationen.
+- **Formel:**
+  $$\text{Prognose} = \text{Empirisk Grundlinje} \times \text{Højtidsforskydning} \times \text{Vækstfaktor}$$
 
-For at undgå at ældre ordrer eller restordrer bliver glemt på lageret, anvender SmartPick en streng **Ordrealder Escalering (FIFO)**:
+---
 
-1. **Aldersevaluering (Dwell Time):**
-   - Systemet beregner løbende hvor mange dage og timer en ordre har ligget ubehandlet i Dolibarr (`DATEDIFF(NOW(), order_date)`).
-2. **Eskaleret Prioritetsscore:**
-   - **0 dage gammel:** Normal prioritet.
-   - **1 dag gammel:** Eskaleret prioritet (+100 prioritetspoint).
-   - **2+ dage gammel:** 🔥 **KRITISK HØJ PRIORITET / SLA ADVARSEL**.
-3. **Sortering i Plukruten:**
-   Plukkøen sorterer automatisk således, at **de ældste ordrer altid plukkes først**, hvorefter ruten optimeres efter hyldeplacering (Rack/Bin).
+## 📅 År-til-År Højtidsforskydning (`getHolidayCalendarShiftDynamics`)
+- **Ugedagsdynamik for Helligdage:** Tager højde for at hvis Juleaften flytter sig fra en Søndag til en Onsdag, ændres ordrefordelingen markant i dagene op til og efter julen.
+- **Historisk Sammenligning:** Mistral AI sammenligner den aktuelle kalenderplacering med de seneste 3 års historiske ordrekurver i Dolibarr.
 
 ---
 
 ## 🛠 Modulstruktur
+- `class/SmartPickFactorEngine.class.php` - Vækstfaktor (Shopskalering) & Højtidsforskydningsanalyse
 - `class/SmartPickQueue.class.php` - Plukkø med SLA Ordrealder-Prioritering (Gamle ordrer først)
-- `class/SmartPickFactorEngine.class.php` - Dolibarr Helligdags-, Kalender- & Landekode Faktor-Motor
 - `script/smartpick_auto_shifts_cron.php` - Natlig Dolibarr Cron til automatisk 4-dages vagtoprettelse
 - `class/SmartPickForecastAI.class.php` - Mistral AI ordre- & vagtprognoser med faktor-motor
 - `class/SmartPickShiftPlanner.class.php` - Automatisk vagtoprettelse & medarbejdertilmelding
