@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS llx_smartpick_queue (
     loc_bin VARCHAR(64) DEFAULT '',
     status VARCHAR(32) DEFAULT 'pending', -- pending, picking, picked, partial, hold
     batch_id VARCHAR(64) DEFAULT NULL,
+    tote_id VARCHAR(64) DEFAULT NULL, -- Samlekasse / Put-wall placering (f.eks. TOTE-42)
     fk_user_assigned INTEGER DEFAULT 0,
     date_creation DATETIME DEFAULT CURRENT_TIMESTAMP,
     tms TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
