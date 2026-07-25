@@ -48,3 +48,24 @@ CREATE TABLE IF NOT EXISTS llx_smartpick_user_logs (
     INDEX idx_smartpick_user_logs_user (fk_user),
     INDEX idx_smartpick_user_logs_date (date_creation)
 ) ENGINE=innodb;
+
+CREATE TABLE IF NOT EXISTS llx_smartpick_shifts (
+    rowid INTEGER PRIMARY KEY AUTO_INCREMENT,
+    shift_date DATE NOT NULL,
+    start_time VARCHAR(16) NOT NULL DEFAULT '08:00',
+    end_time VARCHAR(16) NOT NULL DEFAULT '16:00',
+    max_pickers INTEGER DEFAULT 5,
+    cutoff_time VARCHAR(16) DEFAULT '13:30',
+    date_creation DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_smartpick_shifts_date (shift_date)
+) ENGINE=innodb;
+
+CREATE TABLE IF NOT EXISTS llx_smartpick_user_shifts (
+    rowid INTEGER PRIMARY KEY AUTO_INCREMENT,
+    fk_shift INTEGER NOT NULL,
+    fk_user INTEGER NOT NULL,
+    status VARCHAR(32) DEFAULT 'confirmed',
+    date_creation DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_smartpick_user_shifts_shift (fk_shift),
+    INDEX idx_smartpick_user_shifts_user (fk_user)
+) ENGINE=innodb;
